@@ -12,6 +12,14 @@ Phase 7 belongs to a **new per-role browser application session**, not the resum
 builder. Application authorization does not authorize outreach, profile edits
 or unrelated uploads. Tool confirmations and access barriers still apply.
 
+Workflow is one public section outside the private-data template, with the
+stable `#workflow` navigation target, native keyboard expand/collapse, a
+scrollable diagram and full-size/Mermaid links. Connecting, refreshing or
+clearing a folder preserves that same generic section and its open state.
+Clearing disconnects the memory-only folder handle without reloading the page.
+Upstream public generation must omit Workflow from the cloned private template;
+offline private HTML must retain its single embedded workflow.
+
 The jobs table has five columns: Item / online JD, Phase, Base score, Next step,
 and Resume / artifact. A distinct status appears beneath its phase, not in a
 separate column. Owner and Status filters still use the full row metadata.

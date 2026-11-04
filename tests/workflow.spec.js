@@ -330,6 +330,7 @@ async function installLiveFolder(page, jobs) {
     window.testEntries = entries;
     window.testPermission = "granted";
     window.testReads = 0;
+    window.testPicks = 0;
     const handle = {
       queryPermission: async () => window.testPermission,
       async *entries() {
@@ -343,6 +344,7 @@ async function installLiveFolder(page, jobs) {
     };
     window.showDirectoryPicker = async options => {
       if (options.mode !== "read") throw new Error("Only read access is allowed");
+      window.testPicks++;
       return handle;
     };
   }, files(jobs));
@@ -599,3 +601,218 @@ for (const width of [1440, 390]) {
     await expect(page.locator("#grid-error")).toBeHidden();
   });
 }
+
+async function expectSharedWorkflow(page, original) {
+  await expect(page.locator("#workflow, details.public-workflow")).toHaveCount(1);
+  await expect(page.locator("details#workflow.public-workflow > summary")).toHaveAccessibleName("Workflow");
+  await expect(page.locator(".workflow-view")).toHaveCount(1);
+  await expect(page.locator('img[src="workflow.svg"]')).toHaveCount(1);
+  await expect(page.locator("#local-root #workflow, #local-root .workflow-view")).toHaveCount(0);
+  expect(await page.locator("#view-template").evaluate(template =>
+    template.content.querySelectorAll('#workflow, .public-workflow, .workflow-view, img[src="workflow.svg"]').length)).toBe(0);
+  if (original) {
+    expect(await original.evaluate(({element, markup}) => ({
+      sameElement: element.isConnected && element === document.getElementById("workflow"),
+      sameContent: element.innerHTML === markup,
+    }))).toEqual({sameElement: true, sameContent: true});
+  }
+}
+
+test("Workflow AC1: a fictional snapshot contains only one Workflow section and diagram", async ({page}) => {
+  await load(page);
+  await expect(page.locator('img[src="workflow.svg"]')).toHaveCount(1);
+  await expectSharedWorkflow(page);
+  expect(await readFile(resolve("dist", "index.html"), "utf8")).toBe(await readFile("index.html", "utf8"));
+});
+
+for (const width of [1440, 390]) {
+  test(`Workflow AC1/AC2/AC4: ${width}px snapshot load, replace and clear retain the shared navigation target`, async ({page}, testInfo) => {
+    await page.setViewportSize({width, height: 900});
+    await page.goto("/?mode=snapshot&view=all");
+    await expectSharedWorkflow(page);
+    const original = await page.locator("#workflow").evaluateHandle(element => ({element, markup: element.innerHTML}));
+    await page.locator("#workflow > summary").click();
+    await page.locator(".workflow-view").evaluate((region, width) => { region.scrollLeft = width === 390 ? 400 : 0; }, width);
+    await page.screenshot({path: testInfo.outputPath(`workflow-snapshot-${width}-before.png`), fullPage: true});
+    for (const score of [100, 99]) {
+      await selectFiles(page, [job({score, scoreLabel: `${score} / 100`})]);
+      await expect(row(page)).toHaveAttribute("data-score", String(score));
+      await expectSharedWorkflow(page, original);
+      await expect(page.locator("#workflow")).toHaveJSProperty("open", true);
+      const navigation = page.getByRole("navigation", {name: "Dashboard sections"}).getByRole("link", {name: "Workflow", exact: true});
+      await expect(navigation).toHaveAttribute("href", "#workflow");
+      await navigation.focus();
+      await navigation.press("Enter");
+      await expect(page).toHaveURL(/#workflow$/);
+      await expect(page.locator("#workflow")).toBeInViewport();
+      await expectSharedWorkflow(page, original);
+      await page.screenshot({path: testInfo.outputPath(`workflow-snapshot-${width}-${score}.png`), fullPage: true});
+    }
+    await page.locator("#clear-data").click();
+    await expect(page.locator("#local-root")).toBeEmpty();
+    await expectSharedWorkflow(page, original);
+    await expect(page.locator("#workflow")).toHaveJSProperty("open", true);
+    await expect(page.getByRole("link", {name: "Mermaid source"})).toBeVisible();
+    await page.screenshot({path: testInfo.outputPath(`workflow-snapshot-${width}-cleared.png`), fullPage: true});
+  });
+
+  test(`Workflow AC1/AC4/AC5: ${width}px live connect, polling, refresh and clear keep one public workflow without reloading`, async ({page}, testInfo) => {
+    const requests = [];
+    page.on("request", request => requests.push({
+      url: request.url(), method: request.method(),
+      navigation: request.isNavigationRequest() && request.frame() === page.mainFrame(),
+    }));
+    await page.setViewportSize({width, height: 900});
+    await installLiveFolder(page, [job()]);
+    await page.clock.install();
+    await page.goto("/?mode=live&refresh=15&view=all");
+    await expectSharedWorkflow(page);
+    const original = await page.locator("#workflow").evaluateHandle(element => ({element, markup: element.innerHTML}));
+    await page.locator("#workflow > summary").click();
+    await page.locator(".workflow-view").evaluate((region, width) => {
+      region.scrollLeft = width === 390 ? 400 : 100;
+      region.scrollTop = 100;
+    }, width);
+    const scroll = await page.locator(".workflow-view").evaluate(region => ({x: region.scrollLeft, y: region.scrollTop}));
+    await page.screenshot({path: testInfo.outputPath(`workflow-live-${width}-before.png`), fullPage: true});
+    await page.locator("#connect-folder").click();
+    await expect(page.locator("#load-status")).toContainText("Live folder connected. 1 jobs");
+    await expectSharedWorkflow(page, original);
+    await page.screenshot({path: testInfo.outputPath(`workflow-live-${width}-connected.png`), fullPage: true});
+    await page.evaluate(entries => { window.testEntries = entries; }, files([job({score: 99, scoreLabel: "99 / 100"})]));
+    await page.clock.runFor(15000);
+    await expect(row(page)).toHaveAttribute("data-score", "99");
+    await expectSharedWorkflow(page, original);
+    await page.evaluate(entries => { window.testEntries = entries; }, files([job({score: 98, scoreLabel: "98 / 100"})]));
+    await page.locator("#refresh-folder").click();
+    await expect(row(page)).toHaveAttribute("data-score", "98");
+    await expectSharedWorkflow(page, original);
+    await page.locator("#refresh-folder").click();
+    await expect(page.locator("#load-status")).toContainText("no file changes");
+    await expectSharedWorkflow(page, original);
+    await expect(page.locator("#workflow")).toHaveJSProperty("open", true);
+    expect(await page.locator(".workflow-view").evaluate(region => ({x: region.scrollLeft, y: region.scrollTop}))).toEqual(scroll);
+    expect(await page.evaluate(() => window.testPicks)).toBe(1);
+    await page.screenshot({path: testInfo.outputPath(`workflow-live-${width}-refreshed.png`), fullPage: true});
+    await page.locator("#clear-data").click();
+    await expect(page.locator("#local-root")).toBeEmpty();
+    await expect(page.locator("#refresh-folder")).toBeDisabled();
+    const reads = await page.evaluate(() => window.testReads);
+    await page.clock.runFor(30000);
+    expect(await page.evaluate(() => window.testReads)).toBe(reads);
+    await expectSharedWorkflow(page, original);
+    await expect(page.locator("#workflow")).toHaveJSProperty("open", true);
+    await page.screenshot({path: testInfo.outputPath(`workflow-live-${width}-cleared.png`), fullPage: true});
+    await page.locator("#connect-folder").click();
+    await expect(row(page)).toHaveAttribute("data-score", "98");
+    await expectSharedWorkflow(page, original);
+    expect(await page.evaluate(() => window.testPicks)).toBe(2);
+    expect(requests.filter(request => request.navigation)).toHaveLength(1);
+    expect(requests.every(request => request.url.startsWith("http://127.0.0.1:4177/") && request.method === "GET")).toBe(true);
+    expect(await page.evaluate(async () => ({
+      local: localStorage.length, session: sessionStorage.length, databases: (await indexedDB.databases()).length,
+    }))).toEqual({local: 0, session: 0, databases: 0});
+  });
+
+  test(`Workflow AC3: ${width}px public diagram, keyboard disclosure and source links work without private data`, async ({page}, testInfo) => {
+    await page.setViewportSize({width, height: 900});
+    await page.goto("/?mode=snapshot");
+    await expectSharedWorkflow(page);
+    const workflow = page.locator("#workflow");
+    const summary = workflow.locator(":scope > summary");
+    await summary.focus();
+    await expect(summary).toBeFocused();
+    await expect(workflow).toHaveJSProperty("open", false);
+    await summary.press("Enter");
+    await expect(workflow).toHaveJSProperty("open", true);
+    const image = workflow.getByRole("img");
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate(node => node.complete && node.naturalWidth > 0)).toBe(true);
+    expect(await image.evaluate(node => node.getBoundingClientRect().width / node.naturalWidth)).toBeGreaterThanOrEqual(0.99);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    const region = page.getByRole("region", {name: "Workflow diagram", exact: true});
+    await region.focus();
+    await expect(region).toBeFocused();
+    if (await region.evaluate(node => node.scrollWidth > node.clientWidth)) {
+      await region.press("ArrowRight");
+      await expect.poll(() => region.evaluate(node => node.scrollLeft)).toBeGreaterThan(0);
+      await region.evaluate((node, width) => { node.scrollLeft = width === 390 ? 400 : 0; }, width);
+    }
+    await page.screenshot({path: testInfo.outputPath(`workflow-public-${width}.png`), fullPage: true});
+    await summary.press("Space");
+    await expect(workflow).toHaveJSProperty("open", false);
+    await expect(image).toBeHidden();
+    await summary.press("Enter");
+    await expect(workflow).toHaveJSProperty("open", true);
+    for (const [label, path] of [
+      ["Open full-size diagram", "/workflow.svg"],
+      ["Mermaid source", "/workflow.mmd"],
+    ]) {
+      const link = workflow.getByRole("link", {name: label, exact: true});
+      await expect(link).toHaveAttribute("href", path.slice(1));
+      const [response] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === path && response.request().isNavigationRequest()),
+        link.click(),
+      ]);
+      expect(response.ok()).toBe(true);
+      await expect(page).toHaveURL(new RegExp(`${path.replace(".", "\\.")}$`));
+      if (path.endsWith(".svg")) {
+        await expect(page.locator("#workflow-APPLICATION")).toBeVisible();
+        expect(await page.locator("#workflow-APPLICATION").evaluate(node => node.textContent.replace(/\s+/g, ""))).toContain("PHASE7:Application");
+      } else {
+        expect(await response.text()).toContain('subgraph APPLICATION["PHASE 7: Application"]');
+      }
+      await page.goBack();
+      await expect(page.locator("#local-root")).toBeEmpty();
+      await expectSharedWorkflow(page);
+      if (!await workflow.evaluate(node => node.open)) await summary.click();
+    }
+  });
+}
+
+test("Workflow AC4: invalid files, stale refresh and revoked read access never remove or mutate the shared workflow", async ({page}) => {
+  await installLiveFolder(page, [job()]);
+  await page.goto("/?mode=live&refresh=3600&view=all");
+  await expectSharedWorkflow(page);
+  const original = await page.locator("#workflow").evaluateHandle(element => ({element, markup: element.innerHTML}));
+  await page.locator("#workflow > summary").click();
+  await page.evaluate(entries => { window.testEntries = entries; }, files([job()], Buffer.from("not a PDF")));
+  await page.locator("#connect-folder").click();
+  await expect(page.locator("#load-error")).toContainText("Resume artifact is not a PDF");
+  await expect(page.locator("#local-root")).toBeEmpty();
+  await expectSharedWorkflow(page, original);
+  await page.evaluate(entries => { window.testEntries = entries; }, files([job()]));
+  await page.locator("#refresh-folder").click();
+  await expect(row(page)).toHaveAttribute("data-state", "Auto-cleared");
+  await page.evaluate(entries => { window.testEntries = entries; }, files([job()], Buffer.concat([pdf, Buffer.from("changed")])));
+  await page.locator("#refresh-folder").click();
+  await expect(page.locator("#load-error")).toContainText("Resume PDF hash mismatch");
+  await expect(page.locator("#load-status")).toContainText("last valid snapshot");
+  await expectSharedWorkflow(page, original);
+  await page.evaluate(() => { window.testPermission = "denied"; });
+  await page.locator("#refresh-folder").click();
+  await expect(page.locator("#load-error")).toContainText("Folder permission is no longer granted");
+  await expect(page.locator("#refresh-folder")).toBeDisabled();
+  await expectSharedWorkflow(page, original);
+  await page.locator("#clear-data").click();
+  await expect(page.locator("#local-root")).toBeEmpty();
+  await expect(page.locator("#load-error")).toBeHidden();
+  await expectSharedWorkflow(page, original);
+  await expect(page.locator("#workflow")).toHaveJSProperty("open", true);
+});
+
+test.describe("Public workflow without scripts", () => {
+  test.use({javaScriptEnabled: false});
+  test("Workflow AC3: native expand and collapse do not depend on the private loader", async ({page}) => {
+    await page.goto("/");
+    const summary = page.locator("#workflow > summary");
+    await expect(summary).toHaveAccessibleName("Workflow");
+    await summary.focus();
+    await summary.press("Enter");
+    await expect(page.getByRole("region", {name: "Workflow diagram", exact: true})).toBeVisible();
+    await expect(page.getByRole("link", {name: "Open full-size diagram"})).toBeVisible();
+    await expect(page.getByRole("link", {name: "Mermaid source"})).toBeVisible();
+    await summary.press("Space");
+    await expect(page.locator("#workflow img")).toBeHidden();
+  });
+});

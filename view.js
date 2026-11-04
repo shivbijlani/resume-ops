@@ -53,7 +53,7 @@ window.initializeOpportunityDashboard = function () {
         && (!phase.value || row.dataset.phase === phase.value)
         && (!owner.value || row.dataset.owner === owner.value)
         && (!state.value || row.dataset.state === state.value)
-        && (!query || row.textContent.toLocaleLowerCase().includes(query));
+        && (!query || [row.textContent, row.dataset.owner, row.dataset.evidence].join(" ").toLocaleLowerCase().includes(query));
       row.hidden = !match;
       if (match) shown++;
       body.append(row);

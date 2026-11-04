@@ -353,7 +353,7 @@ test("AC6: live-folder query preferences and filters survive a content-hash refr
     job({id: "synthetic-alpha", name: "Alpha role", handoff: handoff({independentReview: "pending"})}),
     job({id: "synthetic-beta", name: "Beta role", handoff: handoff({independentReview: "pending"})}),
   ];
-  await page.setViewportSize({width: 1000, height: 900});
+  await page.setViewportSize({width: 800, height: 900});
   await installLiveFolder(page, jobs);
   await page.goto("/?mode=live&refresh=45&view=all");
   await expect(page.locator("#mode-help")).toContainText("refresh every 45s, initial view all");
@@ -366,6 +366,7 @@ test("AC6: live-folder query preferences and filters survive a content-hash refr
   await page.locator('th[data-sort="score"] button').click();
   await page.locator(".grid-scroll").evaluate(node => { node.scrollLeft = 100; });
   const scroll = await page.locator(".grid-scroll").evaluate(node => node.scrollLeft);
+  expect(scroll).toBe(100);
   jobs[0].score = 99;
   jobs[0].scoreLabel = "99 / 100";
   await page.evaluate(entries => { window.testEntries = entries; }, files(jobs));
@@ -433,3 +434,168 @@ test("AC6: responsive view and generated application handoff remain readable", a
   await handoffDiagram.screenshot({path: testInfo.outputPath("handoff-diagram.png")});
   await page.locator("#workflow-APPLICATION").screenshot({path: testInfo.outputPath("application-diagram.png")});
 });
+
+function tableJobs() {
+  return [
+    job({id: "alpha", name: "Alpha role", phase: "Resume review", status: "In review",
+      owner: "Review team", score: 20, scoreLabel: "20 / 100", handoff: undefined,
+      evidence: [{label: "Fictional provenance", url: "https://example.invalid/reference"}]}),
+    job({id: "beta", name: "Beta role", phase: "Publication", status: "Waiting on you",
+      owner: "Decision team", waitingOnUser: true, score: 80, scoreLabel: "80 / 100", handoff: undefined}),
+    job({id: "gamma", name: "Gamma role", phase: "Qualification", status: "Blocked",
+      owner: "Coordinator", score: null, scoreLabel: "Not scored", published: false, handoff: undefined}),
+  ];
+}
+
+test("Table AC1: exactly five aligned cells and only retained sorting controls", async ({page}) => {
+  await load(page, tableJobs());
+  expect(await page.locator("#opportunity-grid th").allTextContents())
+    .toEqual(["Item / online JD", "Phase", "Base score", "Next step", "Resume / artifact"]);
+  expect(await page.locator("#opportunity-grid th[data-sort]").evaluateAll(headers => headers.map(h => h.dataset.sort)))
+    .toEqual(["item", "phase", "score"]);
+  for (const tr of await page.locator("#opportunity-grid tbody tr").all()) {
+    await expect(tr.locator("td")).toHaveCount(5);
+    await expect(tr.locator("td").nth(4).getByRole("link")).toHaveText("Synthetic blank PDF");
+  }
+  await expect(page.locator("#grid-error")).toBeHidden();
+});
+
+test("Table AC2: ownership, status, waiting flags and all filters survive column removal", async ({page}) => {
+  await load(page, tableJobs());
+  const alpha = page.locator('[data-id="alpha"]');
+  const beta = page.locator('[data-id="beta"]');
+  const gamma = page.locator('[data-id="gamma"]');
+  await expect(alpha).toHaveAttribute("data-owner", "Review team");
+  await expect(alpha).toHaveAttribute("data-state", "In review");
+  await expect(alpha).toHaveAttribute("data-waiting", "false");
+  await expect(beta).toHaveAttribute("data-waiting", "true");
+  await expect(alpha).not.toContainText("Review team");
+  await page.locator("#grid-owner").selectOption("Review team");
+  await page.locator("#grid-state").selectOption("In review");
+  await page.locator("#grid-phase").selectOption("Resume review");
+  await expect(alpha).toBeVisible();
+  await expect(beta).toBeHidden();
+  await expect(gamma).toBeHidden();
+  await expect(page.locator("#grid-count")).toHaveText("1 of 3 jobs");
+  await page.locator("#grid-state").selectOption("Blocked");
+  await expect(page.locator("#grid-empty")).toBeVisible();
+  await page.locator("#grid-empty-reset").click();
+  await expect(page.locator("#opportunity-grid tbody tr:visible")).toHaveCount(3);
+  for (const [view, ids] of [
+    ["mine", ["beta"]], ["blocked", ["gamma"]], ["attention", ["beta", "gamma"]],
+    ["published", ["alpha", "beta"]], ["all", ["alpha", "beta", "gamma"]],
+  ]) {
+    await page.locator(`[data-view="${view}"]`).click();
+    expect(await page.locator("#opportunity-grid tbody tr:visible").evaluateAll(rows => rows.map(r => r.dataset.id).sort()))
+      .toEqual(ids);
+  }
+});
+
+test("Table AC2: search still finds hidden ownership and provenance labels", async ({page}) => {
+  await load(page, tableJobs());
+  for (const query of ["review TEAM", "Fictional PROVENANCE"]) {
+    await page.locator("#grid-search").fill(query);
+    await expect(page.locator('[data-id="alpha"]')).toBeVisible();
+    await expect(page.locator("#grid-count")).toHaveText("1 of 3 jobs");
+  }
+  await page.locator("#grid-reset").click();
+  await expect(page.locator("#grid-count")).toHaveText("3 of 3 jobs");
+});
+
+test("Table AC3: Phase has one compact distinct state without a duplicate Status cell", async ({page}) => {
+  await load(page, tableJobs());
+  for (const [id, phase, state] of [
+    ["alpha", "Resume review", "In review"],
+    ["beta", "Publication", "Waiting on you"],
+    ["gamma", "Qualification", "Blocked"],
+  ]) {
+    const cell = page.locator(`[data-id="${id}"] td`).nth(1);
+    await expect(cell).toHaveText(`${phase}${state}`);
+    await expect(cell.locator(".state")).toHaveCount(1);
+    expect(await cell.locator(".state").evaluate(node => getComputedStyle(node).display)).toBe("block");
+    await expect(page.locator(`[data-id="${id}"] .state`)).toHaveCount(1);
+  }
+});
+
+for (const [sort, ascending, descending] of [
+  ["item", ["alpha", "beta", "gamma"], ["gamma", "beta", "alpha"]],
+  ["phase", ["gamma", "beta", "alpha"], ["alpha", "beta", "gamma"]],
+  ["score", ["alpha", "beta", "gamma"], ["beta", "alpha", "gamma"]],
+]) {
+  test(`Table AC4: ${sort} sorts both ways with correct accessibility state`, async ({page}) => {
+    await load(page, tableJobs());
+    const header = page.locator(`th[data-sort="${sort}"]`);
+    await header.getByRole("button").click();
+    for (const expected of sort === "score" ? [descending, ascending] : [ascending, descending]) {
+      expect(await page.locator("#opportunity-grid tbody tr").evaluateAll(rows => rows.map(r => r.dataset.id))).toEqual(expected);
+      await expect(header).toHaveAttribute("aria-sort", expected === ascending ? "ascending" : "descending");
+      await expect(page.locator('th[aria-sort="none"]')).toHaveCount(2);
+      await header.getByRole("button").click();
+    }
+  });
+}
+
+test("Table AC4: linked names, multiple JD links, missing artifacts and provenance stay accessible", async ({page}) => {
+  const jobs = tableJobs();
+  jobs[1].links.push({label: "Second fictional JD", url: "https://example.invalid/second-role"});
+  jobs[2].artifact = {label: "Not built"};
+  await load(page, jobs);
+  await expect(page.locator('[data-id="alpha"] td').first().getByRole("link"))
+    .toHaveAttribute("href", "https://example.invalid/role");
+  await expect(page.locator('[data-id="beta"] td').first().getByRole("link")).toHaveCount(2);
+  await expect(page.locator('[data-id="gamma"] td').nth(4)).toHaveText("Not built");
+  await page.locator("#journal > summary").click();
+  await page.getByText("Alpha role: supporting references", {exact: true}).click();
+  await expect(page.getByRole("link", {name: "Fictional provenance"}))
+    .toHaveAttribute("href", "https://example.invalid/reference");
+  const artifact = page.locator('[data-id="alpha"] td').nth(4).getByRole("link");
+  await artifact.focus();
+  await artifact.press("Enter");
+  await expect(page.locator("#artifact-dialog")).toBeVisible();
+  await expect(page.locator("#artifact-title")).toHaveText("Synthetic blank PDF");
+  await expect(page.locator("#download-artifact")).toHaveAttribute("href", /^blob:/);
+  await page.locator("#close-artifact").click();
+  await expect(artifact).toBeFocused();
+});
+
+test("Table AC4: moving evidence to Journal preserves link validation and safe text rendering", async ({page}) => {
+  const jobs = tableJobs();
+  jobs[0].name = "<script>fictional text</script>";
+  jobs[0].evidence[0].label = "<img src=x onerror=alert(1)>";
+  await load(page, jobs);
+  await expect(page.locator('[data-id="alpha"] td').first()).toHaveText(jobs[0].name);
+  await expect(page.locator("#journal script, #journal img")).toHaveCount(0);
+  jobs[0].evidence[0].url = "javascript:alert(1)";
+  await selectFiles(page, jobs);
+  await expect(page.locator("#load-error")).toContainText("Links must be HTTP(S)");
+  await expect(page.locator("#load-status")).toContainText("last valid snapshot");
+});
+
+for (const width of [1440, 390]) {
+  test(`Table AC5: ${width}px layout contains overflow and keeps all five columns reachable`, async ({page}, testInfo) => {
+    await page.setViewportSize({width, height: 1000});
+    const jobs = tableJobs();
+    jobs[0].name = `Fictional ${"long-role-name".repeat(12)}`;
+    await load(page, jobs);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    const geometry = await page.locator("#opportunity-grid").evaluate(table => ({
+      headers: [...table.tHead.rows[0].cells].map(cell => ({x: cell.getBoundingClientRect().x, width: cell.getBoundingClientRect().width})),
+      rows: [...table.tBodies[0].rows].map(row => [...row.cells].map(cell => ({x: cell.getBoundingClientRect().x, width: cell.getBoundingClientRect().width}))),
+    }));
+    for (const cells of geometry.rows) expect(cells).toEqual(geometry.headers);
+    await page.screenshot({path: testInfo.outputPath(`five-column-${width}.png`), fullPage: true});
+    const region = page.getByRole("region", {name: "Jobs table", exact: true});
+    if (width === 390) {
+      expect(await region.evaluate(node => node.scrollWidth)).toBeGreaterThan(await region.evaluate(node => node.clientWidth));
+      await region.evaluate(node => { node.scrollLeft = node.scrollWidth; });
+      const bounds = await region.boundingBox();
+      const artifact = await page.locator("#opportunity-grid tbody tr").first().locator("td").last().boundingBox();
+      expect(artifact.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(artifact.x + artifact.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      await page.screenshot({path: testInfo.outputPath("five-column-narrow-artifacts.png"), fullPage: true});
+    } else {
+      expect(await region.evaluate(node => node.scrollWidth)).toBe(await region.evaluate(node => node.clientWidth));
+    }
+    await expect(page.locator("#grid-error")).toBeHidden();
+  });
+}

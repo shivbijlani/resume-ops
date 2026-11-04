@@ -15,7 +15,10 @@
 <header class="local-loader">
   <h1>Opportunity workspace</h1>
   <p>This site contains the view only. Choose your private dashboard folder to read it locally. Nothing is uploaded or saved in browser storage.</p>
-  <label for="local-folder">Private dashboard folder</label>
+  <p id="mode-help"></p>
+  <button id="connect-folder" type="button" hidden>Connect private folder</button>
+  <button id="refresh-folder" type="button" disabled hidden>Refresh now</button>
+  <label id="snapshot-label" for="local-folder">Private dashboard folder</label>
   <input id="local-folder" type="file" webkitdirectory multiple>
   <button id="clear-data" type="button" disabled>Clear loaded data</button>
   <p id="load-status" role="status" aria-live="polite">No private data loaded. Select the folder containing data.json, journal.jsonl and any referenced artifacts.</p>

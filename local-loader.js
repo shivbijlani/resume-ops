@@ -6,8 +6,21 @@
   const error = document.getElementById("load-error");
   const clear = document.getElementById("clear-data");
   const dialog = document.getElementById("artifact-dialog");
+  const connect = document.getElementById("connect-folder");
+  const refresh = document.getElementById("refresh-folder");
+  const modeHelp = document.getElementById("mode-help");
+  const preferences = new URLSearchParams(location.search);
+  const mode = preferences.get("mode") || "live";
+  const refreshSeconds = Number(preferences.get("refresh") || "30");
+  const initialView = preferences.get("view") || "attention";
+  const validViews = ["attention", "mine", "blocked", "all", "published"];
+  const liveSupported = typeof window.showDirectoryPicker === "function";
   let generation = 0;
   let blobUrls = [];
+  let liveHandle = null;
+  let liveTimer = null;
+  let liveBusy = false;
+  let lastSignature = "";
   const phases = ["Discovery", "Qualification", "Publication", "Resume build", "Resume review", "Human review", "Authorized action"];
   const states = ["Blocked", "Not built", "Rejected", "Parked", "Research", "Awaiting scoring", "Ready", "Approved", "Waiting on you", "Complete"];
   function node(tag, value = "", attributes = {}) {
@@ -70,8 +83,16 @@
     blobUrls = [];
     clear.disabled = true;
   }
+  function disconnect() {
+    liveHandle = null;
+    lastSignature = "";
+    if (liveTimer !== null) clearInterval(liveTimer);
+    liveTimer = null;
+    refresh.disabled = true;
+  }
   clear.addEventListener("click", () => {
     generation++;
+    disconnect();
     clearView();
     picker.value = "";
     error.hidden = true;
@@ -80,9 +101,37 @@
   document.getElementById("close-artifact").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => document.getElementById("artifact-frame").removeAttribute("src"));
 
-  async function importFiles(files) {
+  function captureView() {
+    const table = document.getElementById("opportunity-grid");
+    if (!table) return {view: initialView};
+    const sort = table.querySelector('th[aria-sort="ascending"],th[aria-sort="descending"]');
+    return {
+      view: document.querySelector('[data-view][aria-pressed="true"]')?.dataset.view || initialView,
+      search: document.getElementById("grid-search").value,
+      phase: document.getElementById("grid-phase").value,
+      owner: document.getElementById("grid-owner").value,
+      state: document.getElementById("grid-state").value,
+      sort: sort?.dataset.sort, direction: sort?.getAttribute("aria-sort"),
+      scroll: document.querySelector(".grid-scroll").scrollLeft,
+    };
+  }
+  function restoreView(saved) {
+    document.querySelector(`[data-view="${saved.view}"]`).click();
+    for (const key of ["search", "phase", "owner", "state"]) {
+      const control = document.getElementById(`grid-${key}`);
+      if (saved[key] && (control.tagName !== "SELECT" || [...control.options].some(o => o.value === saved[key]))) control.value = saved[key];
+      control.dispatchEvent(new Event(key === "search" ? "input" : "change"));
+    }
+    if (saved.sort) {
+      const header = [...document.querySelectorAll("th[data-sort]")].find(h => h.dataset.sort === saved.sort);
+      header.querySelector("button").click();
+      if (header.getAttribute("aria-sort") !== saved.direction) header.querySelector("button").click();
+    }
+    document.querySelector(".grid-scroll").scrollLeft = saved.scroll || 0;
+  }
+  async function importFiles(files, live = false) {
     const ticket = ++generation;
-    clearView();
+    const savedView = captureView();
     error.hidden = true;
     status.textContent = "Reading selected files locally...";
     const pendingUrls = [];
@@ -183,23 +232,120 @@
       } else journal.append(node("p", "No journal supplied."));
       if (ticket !== generation) {
         for (const url of pendingUrls) URL.revokeObjectURL(url);
-        return;
+        return false;
       }
+      clearView();
       root.replaceChildren(fragment);
       blobUrls = pendingUrls;
       window.initializeOpportunityDashboard();
+      restoreView(savedView);
       clear.disabled = false;
-      status.textContent = `Loaded ${data.jobs.length} jobs locally. No upload or browser storage. Clear the page when finished.`;
+      status.textContent = live
+        ? `Live folder connected. ${data.jobs.length} jobs; checked ${new Date().toLocaleTimeString()}. Refreshes every ${refreshSeconds}s while visible.`
+        : `Loaded ${data.jobs.length} jobs locally. Snapshot only; reselect to refresh.`;
       picker.value = "";
+      return true;
     } catch (failure) {
       for (const url of pendingUrls) URL.revokeObjectURL(url);
-      if (ticket !== generation) return;
-      clearView();
+      if (ticket !== generation) return false;
       error.hidden = false;
       error.textContent = `Could not load folder: ${failure.message}. Fix the selected data or choose the correct dashboard folder.`;
-      status.textContent = "No private data is loaded.";
+      status.textContent = root.childElementCount ? "Refresh failed. Showing the last valid snapshot, which may be stale." : "No private data is loaded.";
       picker.value = "";
+      return false;
     }
   }
-  picker.addEventListener("change", () => importFiles([...picker.files]));
+  async function readDirectory(handle) {
+    const files = [];
+    let total = 0;
+    async function visit(directory, prefix, depth) {
+      if (depth > 8) throw new Error("Dashboard folder nesting exceeds 8 levels");
+      for await (const [name, entry] of directory.entries()) {
+        if (entry.kind === "directory") await visit(entry, prefix + name + "/", depth + 1);
+        else {
+          const file = await entry.getFile();
+          total += file.size;
+          if (files.length >= 200 || total > 100 * 1024 * 1024) throw new Error("Dashboard folder exceeds 200 files / 100 MB");
+          Object.defineProperty(file, "webkitRelativePath", {value: prefix + name});
+          files.push(file);
+        }
+      }
+    }
+    await visit(handle, "", 0);
+    return files;
+  }
+  async function signature(files) {
+    const parts = [];
+    for (const file of [...files].sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath))) {
+      const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+      parts.push(file.webkitRelativePath + ":" + [...new Uint8Array(digest)].map(n => n.toString(16).padStart(2, "0")).join(""));
+    }
+    return parts.join("|");
+  }
+  async function refreshLive() {
+    if (!liveHandle || liveBusy || document.hidden || dialog.open) return;
+    liveBusy = true;
+    refresh.disabled = true;
+    const handle = liveHandle;
+    const ticket = generation;
+    try {
+      if (await handle.queryPermission({mode: "read"}) !== "granted") {
+        disconnect();
+        throw new Error("Folder permission is no longer granted. Connect the folder again");
+      }
+      const files = await readDirectory(handle);
+      const current = await signature(files);
+      if (handle !== liveHandle || ticket !== generation) return;
+      if (current !== lastSignature) {
+        if (await importFiles(files, true)) lastSignature = current;
+      } else {
+        error.hidden = true;
+        status.textContent = `Live folder connected. Checked ${new Date().toLocaleTimeString()}; no file changes. Refreshes every ${refreshSeconds}s while visible.`;
+      }
+    } catch (failure) {
+      if (handle !== liveHandle && liveHandle !== null) return;
+      error.hidden = false;
+      error.textContent = `Live refresh ${liveHandle ? "failed" : "paused"}: ${failure.message}.`;
+      status.textContent = root.childElementCount ? "Showing the last valid snapshot; live data may be stale." : "No private data loaded.";
+    } finally {
+      liveBusy = false;
+      refresh.disabled = !liveHandle;
+    }
+  }
+  connect.addEventListener("click", async () => {
+    try {
+      const handle = await window.showDirectoryPicker({mode: "read"});
+      generation++;
+      disconnect();
+      liveHandle = handle;
+      error.hidden = true;
+      clear.disabled = false;
+      await refreshLive();
+      if (liveHandle) liveTimer = setInterval(refreshLive, refreshSeconds * 1000);
+    } catch (failure) {
+      if (failure.name === "AbortError") return;
+      error.hidden = false;
+      error.textContent = `Could not connect folder: ${failure.message}. Use mode=snapshot in the URL if live folder access is unsupported.`;
+    }
+  });
+  refresh.addEventListener("click", refreshLive);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshLive(); });
+  picker.addEventListener("change", () => {
+    disconnect();
+    importFiles([...picker.files]);
+  });
+  if (!["live", "snapshot"].includes(mode) || !Number.isInteger(refreshSeconds) || refreshSeconds < 15 || refreshSeconds > 3600 || !validViews.includes(initialView)) {
+    picker.disabled = true;
+    error.hidden = false;
+    error.textContent = "Invalid URL preferences. Use mode=live or snapshot, refresh=15..3600 seconds, and view=attention, mine, blocked, all or published.";
+  } else if (mode === "live" && liveSupported) {
+    connect.hidden = refresh.hidden = false;
+    picker.hidden = document.getElementById("snapshot-label").hidden = true;
+    modeHelp.textContent = `Live mode preset by URL: refresh every ${refreshSeconds}s, initial view ${initialView}. Connect once to grant read access. Reloading this page requires reconnecting; no handle is stored.`;
+    status.textContent = "Connect your private dashboard folder to load and refresh local data.";
+  } else {
+    modeHelp.textContent = mode === "live"
+      ? "This browser does not support live folder access. Snapshot mode is available below; reselect the folder to refresh."
+      : `Snapshot mode preset by URL, initial view ${initialView}. Reselect the folder when files change.`;
+  }
 })();

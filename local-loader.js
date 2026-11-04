@@ -217,6 +217,7 @@
       fragment.querySelector(".status").textContent = data.summary;
       fragment.querySelector(".grid-summary").textContent = data.attention;
       const body = fragment.querySelector("#opportunity-grid tbody");
+      const jobReferences = [];
       for (const job of data.jobs) {
         const row = node("tr");
         const item = node("td");
@@ -251,18 +252,25 @@
         Object.assign(row.dataset, {id: job.id, item: job.name, phase, owner: job.owner,
           state: displayed.status, score: job.score === null ? "" : String(job.score),
           published: String(job.published), waiting: String(displayed.waitingOnUser)});
-        const state = node("td");
-        state.append(node("span", displayed.status, {class: "state"}));
+        const phaseCell = node("td", phase);
+        if (displayed.status.toLocaleLowerCase() !== phase.toLocaleLowerCase()) {
+          phaseCell.append(node("span", displayed.status, {class: "state"}));
+        }
         const nextStep = node("td", displayed.nextStep);
         if (phase === "Application") {
           nextStep.append(node("p", job.phase === "Authorized action"
             ? "Legacy action record: application scope is not established by this phase label. The private coordinator must reconcile it."
             : "Execution status is reported by the private per-role session, not authorized or started by this page.", {class: "muted"}));
         }
-        row.append(item, node("td", phase), node("td", job.owner), state, node("td", job.scoreLabel), nextStep);
-        const evidence = node("td");
+        row.append(item, phaseCell, node("td", job.scoreLabel), nextStep, artifact);
+        const evidence = node("p");
         addLinks(evidence, job.evidence);
-        row.append(artifact, evidence);
+        row.dataset.evidence = evidence.textContent;
+        if (job.evidence.length) {
+          const details = node("details");
+          details.append(node("summary", `${job.name}: supporting references`), evidence);
+          jobReferences.push(details);
+        }
         body.append(row);
       }
       const rows = [...body.rows];
@@ -302,6 +310,7 @@
           journal.append(details);
         }
       } else journal.append(node("p", "No journal supplied."));
+      if (jobReferences.length) journal.append(node("h3", "Job supporting references"), ...jobReferences);
       if (ticket !== generation) {
         for (const url of pendingUrls) URL.revokeObjectURL(url);
         return false;

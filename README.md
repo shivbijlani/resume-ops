@@ -12,6 +12,14 @@ Phase 7 belongs to a **new per-role browser application session**, not the resum
 builder. Application authorization does not authorize outreach, profile edits
 or unrelated uploads. Tool confirmations and access barriers still apply.
 
+The jobs table has five columns: Item / online JD, Phase, Base score, Next step,
+and Resume / artifact. A distinct status appears beneath its phase, not in a
+separate column. Owner and Status filters still use the full row metadata.
+Search includes ownership and evidence labels even though those columns are
+not shown. Supporting evidence links remain available under Journal's Job
+supporting references; linked job names and verified PDF actions are unchanged.
+This is a display change, not a change to ownership, provenance or gate policy.
+
 ## Private producer contract
 
 The existing `schemaVersion: 1` shape is unchanged. `jobs`, `blockers`, local

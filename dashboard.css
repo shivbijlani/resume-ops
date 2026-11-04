@@ -27,19 +27,17 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; } .workflow-view { overflow:
 .grid-filters input { width: 100%; }
 .grid-results { display: flex; justify-content: space-between; gap: 12px; font-size: .8rem; color: var(--muted); margin: 4px 0 10px; }
 .grid-scroll { overflow: auto; max-height: 65vh; border: 1px solid var(--line); }
-#opportunity-grid { min-width: 1220px; table-layout: fixed; font-size: .8125rem; }
+#opportunity-grid { min-width: 895px; table-layout: fixed; font-size: .8125rem; }
 #opportunity-grid caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 #opportunity-grid th { position: sticky; top: 0; background: var(--paper); z-index: 2; color: var(--ink); }
 #opportunity-grid th:first-child { width: 230px; }
-#opportunity-grid th:nth-child(2) { width: 120px; }
-#opportunity-grid th:nth-child(3) { width: 85px; }
-#opportunity-grid th:nth-child(4) { width: 110px; }
-#opportunity-grid th:nth-child(5) { width: 80px; }
-#opportunity-grid th:nth-child(6) { width: 290px; }
-#opportunity-grid th:nth-child(7) { width: 125px; }
-#opportunity-grid th:nth-child(8) { width: 115px; }
+#opportunity-grid th:nth-child(2) { width: 170px; }
+#opportunity-grid th:nth-child(3) { width: 80px; }
+#opportunity-grid th:nth-child(4) { width: 290px; }
+#opportunity-grid th:nth-child(5) { width: 125px; }
 #opportunity-grid th button { border: 0; padding: 5px 0; font-weight: 650; background: transparent; text-align: left; width: 100%; }
-#opportunity-grid td { padding: 9px 10px; }
+#opportunity-grid td { padding: 9px 10px; overflow-wrap: anywhere; }
+#opportunity-grid td:nth-child(2) .state { display: block; margin-top: 2px; font-size: .75rem; }
 #opportunity-grid tbody tr:hover { background: var(--soft); }
 .state { display: inline-block; font-weight: 650; }
 [data-state="Blocked"] .state { color: #a52b3c; }

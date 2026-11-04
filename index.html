@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Opportunity workspace</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="local-loader.css">
+  <script src="view.js" defer></script>
+  <script src="local-loader.js" defer></script>
+</head>
+<body>
+<header class="local-loader">
+  <h1>Opportunity workspace</h1>
+  <p>This site contains the view only. Choose your private dashboard folder to read it locally. Nothing is uploaded or saved in browser storage.</p>
+  <label for="local-folder">Private dashboard folder</label>
+  <input id="local-folder" type="file" webkitdirectory multiple>
+  <button id="clear-data" type="button" disabled>Clear loaded data</button>
+  <p id="load-status" role="status" aria-live="polite">No private data loaded. Select the folder containing data.json, journal.jsonl and any referenced artifacts.</p>
+  <p id="load-error" role="alert" hidden></p>
+</header>
+<div id="local-root"></div>
+<details class="public-workflow">
+  <summary>View the generic workflow without loading data</summary>
+  <img src="workflow.svg" alt="Discovery, qualification, publication, resume build, resume review, human review and separately authorized action">
+  <p><a href="workflow.mmd">Mermaid source</a></p>
+</details>
+<template id="view-template"><main>
+  <h1>Jobs</h1>
+  <p class="status"></p>
+  <nav aria-label="Dashboard sections"><a href="#opportunity-grid-panel">Jobs</a> · <a href="#process-blockers">Process blockers</a> · <a href="#workflow">Workflow</a> · <a href="#journal">Journal</a></nav>
+  <div id="opportunity-grid-panel" class="grid-panel">
+    <h2>Jobs</h2>
+    <p class="grid-summary"></p>
+    <div class="grid-views" role="group" aria-label="Table views">
+      <button type="button" data-view="attention" aria-pressed="true">Needs attention <span></span></button>
+      <button type="button" data-view="mine" aria-pressed="false">Waiting on me <span></span></button>
+      <button type="button" data-view="blocked" aria-pressed="false">Blocked <span></span></button>
+      <button type="button" data-view="all" aria-pressed="false">All jobs <span></span></button>
+      <button type="button" data-view="published" aria-pressed="false">Published <span></span></button>
+    </div>
+    <div class="grid-filters">
+      <label>Search<input id="grid-search" type="search" placeholder="Role, company, blocker..." autocomplete="off"></label>
+      <label>Phase<select id="grid-phase"><option value="">All phases</option></select></label>
+      <label>Owner<select id="grid-owner"><option value="">All owners</option></select></label>
+      <label>Status<select id="grid-state"><option value="">All statuses</option></select></label>
+      <button type="button" id="grid-reset">Clear filters</button>
+    </div>
+    <div class="grid-results"><span id="grid-count" role="status" aria-live="polite">0 jobs</span><span>Click headings to sort. Scroll sideways for artifacts.</span></div>
+    <p id="grid-error" role="alert" hidden></p>
+    <noscript><p>All saved jobs are shown. Enable JavaScript for filtering and sorting.</p></noscript>
+    <div class="grid-scroll" tabindex="0" role="region" aria-label="Jobs table">
+      <table id="opportunity-grid">
+        <caption>Job opportunities</caption>
+        <thead><tr><th scope="col" data-sort="item" aria-sort="none"><button type="button">Item / online JD<span class="sort-marker" aria-hidden="true"></span></button></th><th scope="col" data-sort="phase" aria-sort="none"><button type="button">Phase<span class="sort-marker" aria-hidden="true"></span></button></th><th scope="col" data-sort="owner" aria-sort="none"><button type="button">Owner<span class="sort-marker" aria-hidden="true"></span></button></th><th scope="col" data-sort="state" aria-sort="none"><button type="button">Status<span class="sort-marker" aria-hidden="true"></span></button></th><th scope="col" data-sort="score" aria-sort="none"><button type="button">Base score<span class="sort-marker" aria-hidden="true"></span></button></th><th scope="col">Next step</th><th scope="col">Resume / artifact</th><th scope="col">Evidence</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="grid-empty" class="grid-empty" hidden><strong id="grid-empty-title"></strong><p id="grid-empty-help"></p><button id="grid-empty-reset" type="button">Show all jobs</button></div>
+    <p class="muted">Read-only. Filters and copied requests do not change decisions, grant permission or start work.</p>
+  </div>
+  <section id="process-blockers" aria-labelledby="process-heading">
+    <h2 id="process-heading">Process blockers</h2>
+    
+  </section>
+  <details id="workflow">
+    <summary><h2>Workflow</h2></summary>
+    <div class="workflow-view"><img src="workflow.svg" alt="Generic stage-gated workflow"></div><p><a href="workflow.mmd">Mermaid source</a></p>
+  </details>
+  <details id="journal">
+    <summary><h2>Journal</h2></summary>
+    <p class="muted">Supporting observations and decisions. Current job state is shown above.</p>
+    
+  </details>
+</main></template>
+<dialog id="artifact-dialog" aria-labelledby="artifact-title">
+  <header><h2 id="artifact-title">Resume artifact</h2><button id="close-artifact" type="button">Close</button></header>
+  <p id="artifact-notice"></p><a id="download-artifact" download="resume.pdf">Download selected artifact</a>
+  <iframe id="artifact-frame" title="Selected resume PDF"></iframe>
+</dialog>
+<noscript><p>This view needs JavaScript to read local files. No data will be uploaded.</p></noscript>
+</body>
+</html>

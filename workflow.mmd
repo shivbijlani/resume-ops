@@ -1,0 +1,80 @@
+flowchart TD
+    subgraph DISCOVERY["PHASE 1: Discovery"]
+      direction TB
+      H1["1. YOU: Set priorities or share leads"]:::human
+      subgraph SCOUTS["Configured scouting skills"]
+        S["2. Find leads within authorized scope"]
+        V["3. Verify full live JD; deduplicate;<br/>map evidence and confirmed answers"]
+        S --> V
+      end
+      HF["3a. YOU: Supply a missing fact<br/>or resolve a conflicting preference"]:::human
+      H1 --> S
+      V -. Only if needed .-> HF
+      HF -. Resolve within Discovery .-> V
+    end
+    subgraph QUALIFICATION["PHASE 2: Qualification"]
+      direction TB
+      R["4. Score exact evidence using configured rubric;<br/>obtain independent reviews"]
+      Q["5. Gate: configured threshold<br/>and required reviewers approve"]
+      P["5a. Otherwise park or hold here;<br/>resolve disagreements within this phase"]:::hold
+      R --> Q
+      Q -. Not cleared .-> P
+    end
+    subgraph PUBLICATION["PHASE 3: Publication"]
+      direction TB
+      G["6. Check shared-route stops,<br/>applications and reservations"]
+      J["7. Save qualified JD privately;<br/>verify builder handoff packet"]
+      GP["6a. Unknown or stopped: hold here"]:::hold
+      G -->|Clear| J
+      G -. Not cleared .-> GP
+    end
+    subgraph BUILD["PHASE 4: Resume build"]
+      subgraph BUILD_SKILL["Configured resume customization skill"]
+        B["8. Build one package from approved evidence<br/>and the chosen master layout"]
+      end
+    end
+    subgraph REVIEW["PHASE 5: Resume review"]
+      direction TB
+      subgraph REVIEW_SKILL["Customization contract + review guidance"]
+        C["9. Validate exact PDF;<br/>obtain independent resume reviews"]
+        X["9a. Fix and recheck inside this phase"]:::hold
+        C -. Missing check or blocked .-> X
+        X -. Recheck .-> C
+      end
+    end
+    subgraph HUMAN_REVIEW["PHASE 6: Human review"]
+      direction TB
+      D["10. Dashboard links the reviewable PDF"]
+      H2["11. YOU: Approve this exact PDF<br/>or request revisions"]:::human
+      A["12. Record exact approved artifact<br/>Not permission to apply or send"]:::human
+      HR["11a. Revalidate revisions<br/>and return for your approval"]:::hold
+      D --> H2
+      H2 -->|Approve| A
+      H2 -. Revisions .-> HR
+      HR -. Revalidate and re-present .-> H2
+    end
+    subgraph ACTION["PHASE 7: Authorized action"]
+      direction TB
+      H3["13. YOU: Authorize the specific application,<br/>upload or outreach"]:::human
+      O["14. Separate authorized execution workflow"]:::outside
+      H3 -->|Explicit permission| O
+    end
+    DISCOVERY -->|AUTO CLEARED: verified JD and evidence| QUALIFICATION
+    QUALIFICATION -->|AUTO CLEARED: score + exact approval| PUBLICATION
+    PUBLICATION -->|AUTO CLEARED: route checks + handoff| BUILD
+    BUILD -->|AUTO CLEARED: draft available| REVIEW
+    REVIEW -->|AUTO CLEARED: checks + exact approval| HUMAN_REVIEW
+    HUMAN_REVIEW -->|YOU CLEARED: exact PDF approved| ACTION
+    classDef human fill:#fff0c2,stroke:#8a5900,color:#332100,stroke-width:2px
+    classDef hold fill:#ffe4e6,stroke:#b4233b,color:#591323
+    classDef outside fill:#edf0f5,stroke:#67758b,color:#233047
+    style DISCOVERY fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style QUALIFICATION fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style PUBLICATION fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style BUILD fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style REVIEW fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style HUMAN_REVIEW fill:#fffbef,stroke:#8a5900,stroke-width:2px
+    style ACTION fill:#fffbef,stroke:#8a5900,stroke-width:2px
+    style SCOUTS fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4
+    style BUILD_SKILL fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4
+    style REVIEW_SKILL fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4

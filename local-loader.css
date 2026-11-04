@@ -1,0 +1,16 @@
+.local-loader, .public-workflow { max-width:1280px; margin:auto; padding:24px; }
+.local-loader { border-bottom:1px solid var(--line); }
+.local-loader p { max-width:75ch; }
+.local-loader label { display:block; font-weight:650; margin:16px 0 6px; }
+.local-loader input { max-width:100%; margin:0 12px 8px 0; }
+.local-loader button, #artifact-dialog button { font:inherit; padding:8px 12px; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:4px; cursor:pointer; }
+.local-loader button:disabled { opacity:.5; cursor:default; }
+.local-loader :is(button,input):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+#load-error { color:#b4233b; }
+@media(prefers-color-scheme:dark) { #load-error { color:#ffacb7; } }
+.public-workflow img { max-width:100%; background:white; }
+#artifact-dialog { width:95vw; height:95vh; max-width:1200px; color:var(--ink); background:var(--paper); border:1px solid var(--line); }
+#artifact-dialog::backdrop { background:rgba(0,0,0,.65); }
+#artifact-dialog header { display:flex; align-items:center; justify-content:space-between; }
+#artifact-dialog h2 { margin:0; }
+#artifact-frame { width:100%; height:calc(100% - 150px); border:0; margin-top:12px; }

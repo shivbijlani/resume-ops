@@ -21,8 +21,58 @@
   let liveTimer = null;
   let liveBusy = false;
   let lastSignature = "";
-  const phases = ["Discovery", "Qualification", "Publication", "Resume build", "Resume review", "Human review", "Authorized action"];
-  const states = ["Blocked", "Not built", "Rejected", "Parked", "Research", "Awaiting scoring", "Ready", "Approved", "Waiting on you", "Complete"];
+  const phases = ["Discovery", "Qualification", "Publication", "Resume build", "Resume review", "Application handoff", "Application"];
+  const states = ["Blocked", "Not built", "Rejected", "Parked", "Research", "Awaiting scoring", "In review", "Ready", "Approved", "Auto-cleared", "Waiting on you", "Complete"];
+  const phaseAliases = {"Human review": "Application handoff", "Authorized action": "Application"};
+  const handoffValues = {
+    scope: ["application", "unknown"],
+    validation: ["passed", "pending", "failed", "unknown"],
+    independentReview: ["verified", "pending", "rejected", "unknown"],
+    routeStop: ["clear", "pending", "stopped", "unknown"],
+    reservation: ["clear", "pending", "conflict", "unknown"],
+    duplicate: ["clear", "pending", "found", "unknown"],
+    authorization: ["auto-cleared", "human-required", "human-approved", "unknown"],
+    personalAttestation: ["complete", "required", "not-required", "unknown"],
+  };
+  function phaseName(value) {
+    return Object.hasOwn(phaseAliases, value) ? phaseAliases[value] : value;
+  }
+  function handoffView(job, verifiedHash) {
+    const result = (status, nextStep) => ({status, waitingOnUser: status === "Waiting on you", nextStep});
+    const blocked = reason => result("Blocked", `${reason} No application handoff is cleared.`);
+    const handoff = job.handoff;
+    if (!handoff) return blocked("Handoff evidence is not reported. The private coordinator must refresh this record.");
+    if (handoff.scope !== "application") return blocked("Application-only authorization is not confirmed.");
+    if (!verifiedHash || handoff.artifactSha256?.toLowerCase() !== verifiedHash) {
+      return blocked("The handoff must identify this exact locally verified PDF, not a draft or an earlier artifact.");
+    }
+    const checks = [
+      ["validation", "passed", "Exact-PDF validation"],
+      ["independentReview", "verified", "All required independent approvals"],
+      ["routeStop", "clear", "Route-stop check"],
+      ["reservation", "clear", "Reservation check"],
+      ["duplicate", "clear", "Duplicate-application check"],
+    ];
+    const failed = checks.find(([key, passed]) => handoff[key] && ![passed, "pending", "unknown"].includes(handoff[key]));
+    if (failed) return blocked(`${failed[2]} did not clear (${handoff[failed[0]]}).`);
+    const unknown = checks.find(([key]) => !handoff[key] || handoff[key] === "unknown");
+    if (unknown) return blocked(`${unknown[2]} is missing or unknown.`);
+    const pending = checks.filter(([key]) => handoff[key] === "pending");
+    if (pending.length) {
+      return result("In review", `Pending: ${pending.map(([, , label]) => label).join(", ")}. No application handoff is cleared.`);
+    }
+    if (!handoff.authorization || handoff.authorization === "unknown") return blocked("Configured application authorization is missing or unknown.");
+    if (!handoff.personalAttestation || handoff.personalAttestation === "unknown") return blocked("Personal-attestation requirements are unknown.");
+    if (handoff.authorization === "human-required" || handoff.personalAttestation === "required") {
+      const needs = [];
+      if (handoff.authorization === "human-required") needs.push("the policy-required decision for this exact PDF and application scope");
+      if (handoff.personalAttestation === "required") needs.push("a missing personal attestation");
+      return result("Waiting on you", `Provide ${needs.join(" and ")} in the private session. Record it once, then recheck this handoff.`);
+    }
+    // These are coordinator-reported receipts, not an authorization issued by this page.
+    return result(handoff.authorization === "auto-cleared" ? "Auto-cleared" : "Ready",
+      `${handoff.authorization === "auto-cleared" ? "Existing private policy clears" : "The required human decision is recorded for"} this exact PDF and application scope. Handoff is to a NEW per-role application session, without another resume approval. This page starts nothing.`);
+  }
   function node(tag, value = "", attributes = {}) {
     const element = document.createElement(tag);
     element.textContent = value;
@@ -59,11 +109,21 @@
       if (ids.has(job.id)) throw new Error("Duplicate job id");
       ids.add(job.id);
       for (const key of ["name", "owner", "nextStep", "scoreLabel"]) text(job[key], key);
-      if (!phases.includes(job.phase) || !states.includes(job.status)) throw new Error("Unknown phase or status");
+      if (!phases.includes(phaseName(job.phase)) || !states.includes(job.status)) throw new Error("Unknown phase or status");
+      if (job.status === "Auto-cleared" && phaseName(job.phase) !== "Application handoff") throw new Error("Auto-cleared is an Application handoff status");
       if (typeof job.published !== "boolean" || typeof job.waitingOnUser !== "boolean") throw new Error("Job flags must be booleans");
       if (job.waitingOnUser !== (job.status === "Waiting on you")) throw new Error("Waiting-on-user status mismatch");
       if (job.score !== null && (typeof job.score !== "number" || !Number.isFinite(job.score) || job.score < 0 || job.score > 100)) throw new Error("Invalid score");
       if (!job.artifact || typeof job.artifact.label !== "string") throw new Error("Artifact label is required");
+      if (job.handoff !== undefined) {
+        if (!job.handoff || typeof job.handoff !== "object" || Array.isArray(job.handoff)) throw new Error("Handoff must be an object");
+        for (const [key, values] of Object.entries(handoffValues)) {
+          if (job.handoff[key] !== undefined && !values.includes(job.handoff[key])) throw new Error(`Unknown handoff ${key}`);
+        }
+        if (job.handoff.artifactSha256 !== undefined && !/^[a-f0-9]{64}$/i.test(text(job.handoff.artifactSha256, "Handoff PDF hash"))) {
+          throw new Error("Invalid handoff PDF hash");
+        }
+      }
     }
   }
   function filePath(value) {
@@ -159,16 +219,11 @@
       const body = fragment.querySelector("#opportunity-grid tbody");
       for (const job of data.jobs) {
         const row = node("tr");
-        Object.assign(row.dataset, {id: job.id, item: job.name, phase: job.phase, owner: job.owner,
-          state: job.status, score: job.score === null ? "" : String(job.score),
-          published: String(job.published), waiting: String(job.waitingOnUser)});
         const item = node("td");
         if (job.links.length === 1) item.append(node("a", job.name, {href: safeUrl(job.links[0].url), rel: "noreferrer"}));
         else { item.append(document.createTextNode(job.name), node("br")); addLinks(item, job.links); }
-        const state = node("td");
-        state.append(node("span", job.status, {class: "state"}));
-        row.append(item, node("td", job.phase), node("td", job.owner), state, node("td", job.scoreLabel), node("td", job.nextStep));
         const artifact = node("td", job.artifact.label);
+        let verifiedHash = null;
         if (job.artifact.path) {
           const file = getFile(job.artifact.path);
           if (file.size > 20 * 1024 * 1024) throw new Error("Resume PDF exceeds 20 MB");
@@ -176,6 +231,7 @@
           if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("Resume artifact is not a PDF");
           const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(x => x.toString(16).padStart(2, "0")).join("");
           if (hash !== text(job.artifact.sha256, "PDF hash").toLowerCase()) throw new Error("Resume PDF hash mismatch");
+          verifiedHash = hash;
           const notice = text(job.artifact.notice, "PDF notice");
           const url = URL.createObjectURL(new Blob([bytes], {type: "application/pdf"}));
           pendingUrls.push(url);
@@ -190,17 +246,33 @@
           });
           artifact.replaceChildren(link);
         }
+        const phase = phaseName(job.phase);
+        const displayed = phase === "Application handoff" ? handoffView(job, verifiedHash) : job;
+        Object.assign(row.dataset, {id: job.id, item: job.name, phase, owner: job.owner,
+          state: displayed.status, score: job.score === null ? "" : String(job.score),
+          published: String(job.published), waiting: String(displayed.waitingOnUser)});
+        const state = node("td");
+        state.append(node("span", displayed.status, {class: "state"}));
+        const nextStep = node("td", displayed.nextStep);
+        if (phase === "Application") {
+          nextStep.append(node("p", job.phase === "Authorized action"
+            ? "Legacy action record: application scope is not established by this phase label. The private coordinator must reconcile it."
+            : "Execution status is reported by the private per-role session, not authorized or started by this page.", {class: "muted"}));
+        }
+        row.append(item, node("td", phase), node("td", job.owner), state, node("td", job.scoreLabel), nextStep);
         const evidence = node("td");
         addLinks(evidence, job.evidence);
         row.append(artifact, evidence);
         body.append(row);
       }
+      const rows = [...body.rows];
+      fragment.querySelector(".grid-summary").textContent = `${rows.length} jobs: ${rows.filter(row => row.dataset.waiting === "true").length} waiting on you, ${rows.filter(row => row.dataset.state === "In review").length} in review, ${rows.filter(row => row.dataset.state === "Blocked").length} blocked.`;
       const blockers = fragment.querySelector("#process-blockers");
       if (!data.blockers.length) blockers.append(node("p", "No process blockers recorded."));
       for (const [index, blocker] of data.blockers.entries()) {
         const article = node("article", "", {class: "process-item"});
         const header = node("header");
-        header.append(node("h3", text(blocker.title, "Blocker title")), node("span", `${text(blocker.phase, "Phase")} · ${text(blocker.owner, "Owner")}`));
+        header.append(node("h3", text(blocker.title, "Blocker title")), node("span", `${phaseName(text(blocker.phase, "Phase"))} · ${text(blocker.owner, "Owner")}`));
         article.append(header, node("p", `Blocked: ${text(blocker.problem, "Problem")}`), node("p", `Clears when: ${text(blocker.clearsWhen, "Clearance")}`));
         const details = node("details", "", {class: "repair-request"});
         const id = `repair-${index}`;

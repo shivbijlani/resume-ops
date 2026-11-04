@@ -1,4 +1,6 @@
 flowchart TD
+    accTitle: Opportunity workflow with a policy-driven application handoff
+    accDescr: Seven forward-only phases. Exact artifact checks and all independent approvals precede one application handoff. Existing private policy can auto-clear it; only required decisions or personal attestations need a human. A new per-role browser session completes and submits the application once, respecting tool confirmations and access barriers.
     subgraph DISCOVERY["PHASE 1: Discovery"]
       direction TB
       H1["1. YOU: Set priorities or share leads"]:::human
@@ -36,45 +38,72 @@ flowchart TD
     subgraph REVIEW["PHASE 5: Resume review"]
       direction TB
       subgraph REVIEW_SKILL["Customization contract + review guidance"]
-        C["9. Validate exact PDF;<br/>obtain independent resume reviews"]
-        X["9a. Fix and recheck inside this phase"]:::hold
-        C -. Missing check or blocked .-> X
+        C["9. Validate exact PDF;<br/>ALL configured independent reviewers approve<br/>this artifact with verified receipts"]
+        W["9a. In review: checks or reviewers pending<br/>Not blocked, approved or application-ready"]:::pending
+        X["9b. Blocked: missing or failed checks;<br/>fix and recheck inside this phase"]:::hold
+        C -. Pending .-> W
+        W -. Finish reviews .-> C
+        C -. Missing, unknown or failed .-> X
         X -. Recheck .-> C
       end
     end
-    subgraph HUMAN_REVIEW["PHASE 6: Human review"]
+    subgraph HANDOFF["PHASE 6: Application handoff"]
       direction TB
-      D["10. Dashboard links the reviewable PDF"]
-      H2["11. YOU: Approve this exact PDF<br/>or request revisions"]:::human
-      A["12. Record exact approved artifact<br/>Not permission to apply or send"]:::human
-      HR["11a. Revalidate revisions<br/>and return for your approval"]:::hold
-      D --> H2
-      H2 -->|Approve| A
-      H2 -. Revisions .-> HR
-      HR -. Revalidate and re-present .-> H2
+      D["10. Dashboard links exact PDF and receipts<br/>Score or visual impression never clears the handoff"]
+      H["11. One application-only handoff gate<br/>Exact validated PDF + ALL verified independent approvals;<br/>route stops, reservations and duplicates clear;<br/>configured authorization + required personal attestations<br/>Auto-cleared: existing policy<br/>Ready: required decision recorded"]
+      HD["11a. Waiting on you: ONLY a policy-required decision<br/>for this exact PDF and application,<br/>or a missing personal attestation"]:::human
+      HP["11b. In review: required checks pending<br/>No application handoff yet"]:::pending
+      HX["11c. Blocked: missing, unknown, failed or changed<br/>Fix and revalidate the exact artifact here;<br/>never infer consent from absent receipts"]:::hold
+      D --> H
+      H -. New decision or attestation required .-> HD
+      HD -. Record once for exact artifact and scope; recheck .-> H
+      H -. Pending .-> HP
+      HP -. Finish checks .-> H
+      H -. Not cleared or revisions .-> HX
+      HX -. Revalidate and recheck .-> H
     end
-    subgraph ACTION["PHASE 7: Authorized action"]
+    subgraph APPLICATION["PHASE 7: Application"]
       direction TB
-      H3["13. YOU: Authorize the specific application,<br/>upload or outreach"]:::human
-      O["14. Separate authorized execution workflow"]:::outside
-      H3 -->|Explicit permission| O
+      subgraph APPLICATION_SKILL["Configured browser application skill"]
+        A12["12. NEW per-role browser application session<br/>Separate from the resume builder"]
+        A13["13. Recheck live role, route stops,<br/>reservations and prior applications"]
+        A14["14. Complete form with applicable confirmed answers<br/>Use only the exact approved PDF"]
+        A15["15. Required pre-submit review of actual form and PDF<br/>Respect tool confirmations and access barriers"]
+        A16["16. Submit once with current application authorization<br/>No outreach, profile edits or unrelated uploads"]
+        A17["17. Verify site confirmation and record receipt privately<br/>No confirmation: hold and reconcile, never blind retry"]
+        AH["13a. Blocked: stopped, unknown, duplicate or access barrier<br/>Resolve within this session before proceeding"]:::hold
+        AQ["14a. YOU: Missing personal attestation<br/>or required tool confirmation only"]:::human
+        A12 --> A13
+        A13 -->|Clear| A14
+        A13 -. Not cleared .-> AH
+        AH -. Resolve and recheck .-> A13
+        A14 --> A15
+        A14 -. Missing personal attestation .-> AQ
+        A15 -. Required tool confirmation .-> AQ
+        AQ -. Record applicable answer; recheck .-> A13
+        A15 -. Corrections; revalidate exact artifact and approvals .-> A14
+        A15 -->|All requirements satisfied| A16
+        A16 --> A17
+        A17 -. Unverified outcome; reconcile before any retry .-> AH
+      end
     end
     DISCOVERY -->|AUTO CLEARED: verified JD and evidence| QUALIFICATION
     QUALIFICATION -->|AUTO CLEARED: score + exact approval| PUBLICATION
     PUBLICATION -->|AUTO CLEARED: route checks + handoff| BUILD
     BUILD -->|AUTO CLEARED: draft available| REVIEW
-    REVIEW -->|AUTO CLEARED: checks + exact approval| HUMAN_REVIEW
-    HUMAN_REVIEW -->|YOU CLEARED: exact PDF approved| ACTION
+    REVIEW -->|AUTO CLEARED: exact checks + ALL verified approvals| HANDOFF
+    H -->|Handoff cleared; no repeat approval| A12
     classDef human fill:#fff0c2,stroke:#8a5900,color:#332100,stroke-width:2px
     classDef hold fill:#ffe4e6,stroke:#b4233b,color:#591323
-    classDef outside fill:#edf0f5,stroke:#67758b,color:#233047
+    classDef pending fill:#fff7db,stroke:#805500,color:#493100
     style DISCOVERY fill:#f8fafc,stroke:#365781,stroke-width:2px
     style QUALIFICATION fill:#f8fafc,stroke:#365781,stroke-width:2px
     style PUBLICATION fill:#f8fafc,stroke:#365781,stroke-width:2px
     style BUILD fill:#f8fafc,stroke:#365781,stroke-width:2px
     style REVIEW fill:#f8fafc,stroke:#365781,stroke-width:2px
-    style HUMAN_REVIEW fill:#fffbef,stroke:#8a5900,stroke-width:2px
-    style ACTION fill:#fffbef,stroke:#8a5900,stroke-width:2px
+    style HANDOFF fill:#f8fafc,stroke:#365781,stroke-width:2px
+    style APPLICATION fill:#f8fafc,stroke:#365781,stroke-width:2px
     style SCOUTS fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4
     style BUILD_SKILL fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4
     style REVIEW_SKILL fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4
+    style APPLICATION_SKILL fill:#edf4ff,stroke:#67758b,stroke-dasharray:6 4

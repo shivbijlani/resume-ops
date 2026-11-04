@@ -27,8 +27,10 @@
 <div id="local-root"></div>
 <details class="public-workflow">
   <summary>View the generic workflow without loading data</summary>
-  <img src="workflow.svg" alt="Discovery, qualification, publication, resume build, resume review, human review and separately authorized action">
-  <p><a href="workflow.mmd">Mermaid source</a></p>
+  <p>One application handoff follows exact-PDF checks and all required independent approvals. Existing private policy may auto-clear it; a new human decision is requested only when required. Phase 7 is a new per-role browser application session, not the resume builder.</p>
+  <div class="workflow-view" tabindex="0" role="region" aria-label="Workflow diagram"><img src="workflow.svg" alt="Discovery, Qualification, Publication, Resume build, Resume review, Application handoff and Application"></div>
+  <p>Application authorization excludes outreach, profile edits and unrelated uploads. Required tool confirmations and access barriers still apply.</p>
+  <p><a href="workflow.svg">Open full-size diagram</a> · <a href="workflow.mmd">Mermaid source</a></p>
 </details>
 <template id="view-template"><main>
   <h1>Jobs</h1>
@@ -63,6 +65,7 @@
     </div>
     <div id="grid-empty" class="grid-empty" hidden><strong id="grid-empty-title"></strong><p id="grid-empty-help"></p><button id="grid-empty-reset" type="button">Show all jobs</button></div>
     <p class="muted">Read-only. Filters and copied requests do not change decisions, grant permission or start work.</p>
+    <p class="muted">Application handoff: Auto-cleared means existing policy and exact checks clear the handoff; Ready means the required human decision is recorded; Waiting on you means a new decision or personal attestation is needed. In review is pending, not approved. Blocked means missing, unknown or failed prerequisites. Application status is reported by the private execution session.</p>
   </div>
   <section id="process-blockers" aria-labelledby="process-heading">
     <h2 id="process-heading">Process blockers</h2>
@@ -70,7 +73,7 @@
   </section>
   <details id="workflow">
     <summary><h2>Workflow</h2></summary>
-    <div class="workflow-view"><img src="workflow.svg" alt="Generic stage-gated workflow"></div><p><a href="workflow.mmd">Mermaid source</a></p>
+    <div class="workflow-view" tabindex="0" role="region" aria-label="Workflow diagram"><img src="workflow.svg" alt="Discovery, Qualification, Publication, Resume build, Resume review, Application handoff and Application"></div><p><a href="workflow.svg">Open full-size diagram</a> · <a href="workflow.mmd">Mermaid source</a></p>
   </details>
   <details id="journal">
     <summary><h2>Journal</h2></summary>

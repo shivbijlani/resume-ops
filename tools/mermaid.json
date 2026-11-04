@@ -1,0 +1,15 @@
+{
+  "theme": "neutral",
+  "look": "classic",
+  "htmlLabels": false,
+  "flowchart": {
+    "curve": "linear",
+    "wrappingWidth": 350,
+    "nodeSpacing": 25,
+    "rankSpacing": 35
+  },
+  "themeVariables": {
+    "fontFamily": "Arial, sans-serif",
+    "fontSize": "16px"
+  }
+}

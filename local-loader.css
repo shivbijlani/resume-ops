@@ -8,7 +8,7 @@
 .local-loader :is(button,input):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 #load-error { color:#b4233b; }
 @media(prefers-color-scheme:dark) { #load-error { color:#ffacb7; } }
-.public-workflow img { max-width:100%; background:white; }
+.public-workflow img { background:white; }
 #artifact-dialog { width:95vw; height:95vh; max-width:1200px; color:var(--ink); background:var(--paper); border:1px solid var(--line); }
 #artifact-dialog::backdrop { background:rgba(0,0,0,.65); }
 #artifact-dialog header { display:flex; align-items:center; justify-content:space-between; }
